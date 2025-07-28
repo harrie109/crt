@@ -1,45 +1,31 @@
+from telegram import Bot, Update
+from telegram.ext import CommandHandler, Updater
 import logging
-import requests
 import schedule
 import time
 import threading
-from telegram import Bot
-from telegram.ext import Updater, CommandHandler
-from apscheduler.schedulers.background import BackgroundScheduler
+import requests
 
-# ✅ Your working bot token (make sure it's complete)
-TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
-CHAT_ID = "6234179043"  # Replace with your actual chat ID or set dynamically
+# === Telegram Bot Token ===
+TOKEN = '8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8'  # Replace with your real token
 
-bot = Bot(token=TOKEN)
-
-# Log setup
+# === Logging ===
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def send_crt_signal():
-    # Replace this with your logic to fetch and analyze CRT signals
-    signal = "🔥 CRT Signal: BUY USD/JPY @ 14:32\nStrength: STRONG"
-    bot.send_message(chat_id=CHAT_ID, text=signal)
+# === Command Handler ===
+def start(update: Update, context):
+    update.message.reply_text("🤖 CRT Signal Bot is Active.")
 
-def start(update, context):
-    update.message.reply_text("Bot is running and will send CRT signals every 1 minute.")
+# === CRT Signal Sending Function (Example only) ===
+def send_crt_signal(context=None):
+    try:
+        signal_text = "📈 CRT SIGNAL\nPAIR: EUR/USD\nTYPE: CALL 🔼\nSTRENGTH: STRONG"
+        bot.send_message(chat_id=YOUR_CHAT_ID, text=signal_text)  # Replace YOUR_CHAT_ID
+    except Exception as e:
+        logger.error(f"Error sending signal: {e}")
 
-def job_thread():
+# === Background Task Scheduler ===
+def run_scheduler():
     schedule.every(1).minutes.do(send_crt_signal)
     while True:
-        schedule.run_pending()
-        time.sleep(1)
-
-def main():
-    updater = Updater(token=TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-
-    threading.Thread(target=job_thread).start()
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
