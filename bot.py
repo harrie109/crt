@@ -1,34 +1,68 @@
 import logging
-from telegram import Bot
-from telegram.ext import Updater
+import random
 import time
-import schedule
-import os
+from telegram import Bot
+from telegram.ext import Updater, CommandHandler
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# Telegram Bot Token
-TOKEN = os.getenv("BOT_TOKEN")
+# ✅ Replace with your bot token and chat ID
+BOT_TOKEN = '8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8'
+CHAT_ID = '6234179043'
 
-# Setup logging
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Dummy CRT signal generator
+bot = Bot(token=BOT_TOKEN)
+
+def generate_fake_snr_signal():
+    """Simulates a CRT signal with strong SNR."""
+    pairs = ["EUR/USD", "USD/JPY", "GBP/USD", "AUD/CAD", "USD/INR"]
+    actions = ["CALL", "PUT"]
+    strength_levels = ["Strong", "Very Strong", "Extreme"]
+
+    # Simulate random signal data
+    signal = {
+        "pair": random.choice(pairs),
+        "action": random.choice(actions),
+        "strength": random.choice(strength_levels)
+    }
+    return signal
+
 def send_crt_signal():
     try:
-        bot = Bot(token=TOKEN)
-        message = "📈 *CRT Signal*\nPair: EUR/USD\nDirection: CALL\nStrength: *Strong*"
-        bot.send_message(chat_id=CHAT_ID, text=message, parse_mode='Markdown')
-        logger.info("CRT signal sent.")
+        signal = generate_fake_snr_signal()
+
+        if not signal:
+            logger.warning("No signal to send.")
+            return
+
+        message = f"🔔 CRT SIGNAL 🔔\n\n" \
+                  f"📊 Pair: {signal['pair']}\n" \
+                  f"📈 Action: {signal['action']}\n" \
+                  f"💪 Strength: {signal['strength']}\n" \
+                  f"🕒 Time: {time.strftime('%H:%M:%S')}"
+
+        bot.send_message(chat_id=CHAT_ID, text=message)
+        logger.info("Signal sent: %s", message)
     except Exception as e:
-        logger.error(f"Failed to send CRT signal: {e}")
+        logger.error("Failed to send CRT signal: %s", e)
 
-# Set your chat_id manually or retrieve from updates
-CHAT_ID = 6234179043  # Replace with your actual chat ID
+def start(update, context):
+    update.message.reply_text("✅ CRT Signal Bot Activated!\nYou will now receive 24/7 automated signals.")
 
-# Start signal scheduler
-schedule.every(1).minutes.do(send_crt_signal)
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("start", start))
 
-# Run loop
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+    # Scheduler to send signal every 1 minute
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(send_crt_signal, 'interval', minutes=1)
+    scheduler.start()
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
