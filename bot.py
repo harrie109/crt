@@ -4,8 +4,8 @@ from telegram import Bot, Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import random
 
-TOKEN = 'YOUR_BOT_TOKEN'
-CHAT_ID = 'YOUR_CHAT_ID'
+TOKEN = '8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8'
+CHAT_ID = '6234179043'
 
 def generate_signal():
     # Simulated logic (replace with live data logic)
