@@ -59,4 +59,5 @@ def start_signal_loop():
 def start(update: Update, context: CallbackContext):
     global chat_id
     chat_id = update.effective_chat.id
-    update.message.reply_text("✅ CRT Signal Bot Ac_
+  update.message.reply_text("✅ CRT Signal Bot Activated! You will now receive 24/7 CRT signals based on strong SNR levels.")
+
