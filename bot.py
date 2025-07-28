@@ -1,81 +1,105 @@
 import logging
-import requests
 import pytz
 from datetime import datetime
 from telegram import Bot
 from telegram.ext import Updater, CommandHandler
-import time
-import threading
+from apscheduler.schedulers.background import BackgroundScheduler
+import requests
 
 # === CONFIGURATION ===
-BOT_TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
-CHAT_ID = "6234179043"  # Replace with your own chat ID
-CHECK_INTERVAL = 60  # every 1 minute
+TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
+CHAT_ID = "6234179043"
 TIMEZONE = pytz.timezone("Asia/Kolkata")
+LIVE_PAIRS = [
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF",
+    "NZDUSD", "USDCAD", "EURJPY", "GBPJPY", "EURGBP"
+]  # only live Quotex pairs
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+bot = Bot(token=TOKEN)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# === SNR & CRT LOGIC (DUMMY EXAMPLE FOR DEMO) ===
-def fetch_live_data():
-    # Simulated Quotex data (replace with real API or method later)
-    return [
-        {"pair": "EUR/USD", "candle": "green", "snr": "support", "strength": "High"},
-        {"pair": "USD/JPY", "candle": "red", "snr": "resistance", "strength": "Medium"},
-        {"pair": "GBP/USD", "candle": "green", "snr": "support", "strength": "Low"},
-    ]
+# === SNR & CRT LOGIC ===
+def detect_crt_signal(pair):
+    try:
+        url = f"https://api.tradingview.com/history?symbol=OANDA:{pair}&resolution=1&count=10"
+        res = requests.get(url)
+        data = res.json()
 
-def detect_crt_signals():
-    signals = []
-    data = fetch_live_data()
-    for d in data:
-        if d["snr"] in ["support", "resistance"]:
-            direction = "CALL" if d["candle"] == "green" and d["snr"] == "support" else "PUT"
-            signals.append({
-                "pair": d["pair"],
-                "pattern": f"Rejection at {d['snr'].capitalize()}",
-                "direction": direction,
-                "strength": d["strength"]
-            })
-    return signals
+        if 'c' not in data:
+            return None
 
-# === TELEGRAM BOT ===
-bot = Bot(token=BOT_TOKEN)
+        close = data['c'][-1]
+        high = data['h'][-1]
+        low = data['l'][-1]
+        open_ = data['o'][-1]
 
-def send_signal(signal):
-    message = f"""🚨 CRT Signal Alert 🚨
-Pair: {signal['pair']}
-Pattern: {signal['pattern']}
-Direction: {signal['direction']}
-Strength: {signal['strength']} 🔥
-Time: {datetime.now(TIMEZONE).strftime('%I:%M:%S %p')} IST"""
-    bot.send_message(chat_id=CHAT_ID, text=message)
+        strength = "Low ⛔️"
+        if abs(close - open_) > 0.0003:
+            strength = "Medium ⚠️"
+        if abs(close - open_) > 0.0006:
+            strength = "High 🔥"
 
-def signal_loop():
-    while True:
-        try:
-            signals = detect_crt_signals()
-            for sig in signals:
-                send_signal(sig)
-        except Exception as e:
-            logger.error(f"Error sending signal: {e}")
-        time.sleep(CHECK_INTERVAL)
+        # SNR Logic
+        if abs(close - low) < 0.0002 and close > open_:
+            pattern = "Rejection at Support"
+            direction = "CALL"
+        elif abs(close - high) < 0.0002 and close < open_:
+            pattern = "Rejection at Resistance"
+            direction = "PUT"
+        elif close > high:
+            pattern = "Breakout above Resistance"
+            direction = "CALL"
+        elif close < low:
+            pattern = "Breakout below Support"
+            direction = "PUT"
+        else:
+            return None
 
+        return {
+            "pair": pair,
+            "pattern": pattern,
+            "direction": direction,
+            "strength": strength
+        }
+    except Exception as e:
+        logging.error(f"Error for pair {pair}: {e}")
+        return None
+
+# === SCHEDULER JOB ===
+def send_crt_signals():
+    now = datetime.now(TIMEZONE).strftime("%I:%M %p")
+    for pair in LIVE_PAIRS:
+        signal = detect_crt_signal(pair)
+        if signal:
+            message = (
+                f"🚨 CRT Signal Alert 🚨\n"
+                f"Pair: {signal['pair']}\n"
+                f"Pattern: {signal['pattern']}\n"
+                f"Direction: {signal['direction']}\n"
+                f"Strength: {signal['strength']}\n"
+                f"Time: {now} (IST)"
+            )
+            try:
+                bot.send_message(chat_id=CHAT_ID, text=message)
+            except Exception as e:
+                logging.error(f"Failed to send signal: {e}")
+
+# === TELEGRAM HANDLER ===
 def start(update, context):
-    update.message.reply_text("🚨 CRT Signal Bot Activated!\nYou will now receive 24/7 automated signals")
+    context.bot.send_message(chat_id=update.effective_chat.id, text="🚀 CRT Signal Bot Activated!\nYou will now receive 24/7 automated signals")
 
 # === MAIN ===
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
+    updater = Updater(token=TOKEN, use_context=True)
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
-    updater.start_polling()
-    logger.info("Bot started. Sending CRT signals every minute.")
 
-    # Start signal loop in background
-    threading.Thread(target=signal_loop, daemon=True).start()
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(send_crt_signals, 'interval', minutes=1)
+    scheduler.start()
+
+    updater.start_polling()
     updater.idle()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
