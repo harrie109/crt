@@ -1,35 +1,40 @@
 import logging
-import pytz
 import random
 import datetime
+import pytz
+import time
+import threading
+
 from telegram import Bot, Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
-from apscheduler.schedulers.background import BackgroundScheduler
+from telegram.ext import CommandHandler, Updater, CallbackContext
 
-# ✅ Replace with your real bot token
-BOT_TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
+# === CONFIGURATION ===
+TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
+chat_id = None  # Will be set when user sends /start
 
-# Set up logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# === LOGGING ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Define signal strength labels
-strength_levels = ["Weak", "Moderate", "Strong", "Very Strong"]
-
-# Simulated function for CRT signal generation
+# === GENERATE DUMMY CRT SIGNAL (you can plug real logic here) ===
 def generate_crt_signal():
-    pairs = ["EUR/USD", "USD/JPY", "GBP/USD", "AUD/USD", "USD/CAD", "EUR/JPY"]
-    directions = ["Buy 🟢", "Sell 🔴"]
+    currency_pairs = ['EUR/USD', 'GBP/JPY', 'AUD/CAD', 'USD/JPY', 'EUR/INR', 'USD/INR']
+    directions = ['BUY', 'SELL']
+    strength_levels = ['Weak', 'Moderate', 'Strong', 'Very Strong']
+
     return {
-        "pair": random.choice(pairs),
+        "pair": random.choice(currency_pairs),
         "direction": random.choice(directions),
         "strength": random.choice(strength_levels),
-        "time": datetime.datetime.now().strftime("%H:%M:%S"),
+        "time": datetime.datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S")
     }
 
-# Send signal to user
+# === SEND SIGNAL TO TELEGRAM ===
 def send_crt_signal():
+    if chat_id is None:
+        logger.info("Chat ID not set yet. Skipping signal send.")
+        return
+
     signal = generate_crt_signal()
     message = (
         f"📡 *CRT Signal Alert*\n\n"
@@ -38,34 +43,20 @@ def send_crt_signal():
         f"📊 Strength: `{signal['strength']}`\n"
         f"⏰ Time: `{signal['time']}`"
     )
-    bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+    try:
+        bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+        logger.info("Signal sent successfully.")
+    except Exception as e:
+        logger.error(f"Failed to send signal: {e}")
 
-# Handle /start command
+# === LOOP THAT SENDS SIGNALS EVERY 60 SECONDS ===
+def start_signal_loop():
+    while True:
+        send_crt_signal()
+        time.sleep(60)  # 1-minute interval
+
+# === /start COMMAND HANDLER ===
 def start(update: Update, context: CallbackContext):
     global chat_id
-    chat_id = update.message.chat_id
-    context.bot.send_message(
-        chat_id=chat_id,
-        text="✅ CRT Signal Bot Activated!\nYou will now receive 24/7 automated signals",
-    )
-
-# Main setup
-def main():
-    global bot
-    updater = Updater(BOT_TOKEN, use_context=True)
-    bot = updater.bot
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-
-    # ✅ Use pytz timezone to avoid APScheduler error
-    timezone = pytz.timezone("Asia/Kolkata")
-
-    scheduler = BackgroundScheduler(timezone=timezone)
-    scheduler.add_job(send_crt_signal, "interval", minutes=1)
-    scheduler.start()
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
+    chat_id = update.effective_chat.id
+    update.message.reply_text("✅ CRT Signal Bot Ac_
