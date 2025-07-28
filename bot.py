@@ -7,7 +7,6 @@ import time
 import threading
 
 TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
-"  # Replace with your token
 CHAT_ID = "6234179043"  # Replace with your actual chat ID
 
 bot = Bot(token=TOKEN)
