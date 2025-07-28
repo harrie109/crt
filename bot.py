@@ -1,47 +1,65 @@
-import time
 import logging
-from telegram import Bot
-from telegram.error import TelegramError
-from datetime import datetime
+import time
 import random
+from telegram import Bot
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# Replace with your actual bot token and chat ID
-TOKEN = '8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8'
-CHAT_ID = '6234179043'  # Replace with real chat ID
+# === CONFIGURATION ===
+BOT_TOKEN = '8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8'  # Replace with your actual bot token
+CHAT_ID = '6234179043'          # Replace with your actual Telegram chat ID
 
-bot = Bot(token=TOKEN)
-
+# === LOGGER SETUP ===
 logging.basicConfig(level=logging.INFO)
-print("CRT Auto Bot Running...")
+logger = logging.getLogger(__name__)
 
-# Dummy function to simulate CRT signal based on SNR
+# === BOT INITIALIZATION ===
+bot = Bot(token=BOT_TOKEN)
+scheduler = BackgroundScheduler()
+
+# === MOCK CURRENCY PAIRS ===
+CURRENCY_PAIRS = [
+    'EUR/USD', 'USD/JPY', 'GBP/USD', 'AUD/USD', 'USD/CAD',
+    'NZD/USD', 'EUR/GBP', 'EUR/JPY', 'GBP/JPY', 'USD/CHF'
+]
+
+# === GENERATE FAKE STRONG SNR CRT SIGNAL ===
 def generate_crt_signal():
-    patterns = ['Rejection at Support', 'Rejection at Resistance']
-    directions = ['CALL', 'PUT']
-    strengths = ['High 🔥', 'Medium ⚡']
+    pair = random.choice(CURRENCY_PAIRS)
+    direction = random.choice(['CALL 🔼', 'PUT 🔽'])
+    strength = random.randint(80, 95)  # Simulate strong accuracy
+    signal = f"""
+⚡ *CRT SIGNAL ALERT* ⚡
+———————————————
+📉 Pair: *{pair}*
+📍 Direction: *{direction}*
+📊 Strength: *{strength}%*
+⏱ Time: {time.strftime('%H:%M:%S')}
+———————————————
+"""
+    return signal
 
-    return {
-        'pattern': random.choice(patterns),
-        'direction': random.choice(directions),
-        'strength': random.choice(strengths)
-    }
-
-def send_signal():
-    signal = generate_crt_signal()
-    message = f"""🚨 CRT Signal Alert 🚨
-Pattern: {signal['pattern']}
-Direction: {signal['direction']}
-Strength: {signal['strength']}"""
-    
+# === SEND SIGNAL FUNCTION ===
+def send_crt_signal():
     try:
-        bot.send_message(chat_id=CHAT_ID, text=message)
-        print(f"✅ Sent: {message}")
-    except TelegramError as e:
-        print(f"❌ Telegram error: {e}")
+        message = generate_crt_signal()
+        bot.send_message(chat_id=CHAT_ID, text=message, parse_mode='Markdown')
+        logger.info("Signal sent.")
+    except Exception as e:
+        logger.error(f"Failed to send signal: {e}")
 
-# Main loop: sends signal every 60 seconds
-while True:
-    now = datetime.now()
-    print(f"📤 Sending signal at {now.strftime('%H:%M:%S')}...")
-    send_signal()
-    time.sleep(60)
+# === START AUTOMATED SCHEDULER ===
+def start_bot():
+    logger.info("CRT Auto Bot Running...")
+    send_crt_signal()  # Send one immediately at startup
+    scheduler.add_job(send_crt_signal, 'interval', seconds=60)
+    scheduler.start()
+
+# === RUN ===
+if __name__ == '__main__':
+    start_bot()
+    try:
+        while True:
+            time.sleep(10)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
+        logger.info("Bot stopped.")
