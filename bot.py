@@ -1,87 +1,89 @@
 import logging
+import pytz
+import datetime
 import requests
-import json
-import time
-import schedule
+from telegram import Bot, Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
-from telegram import Update
-from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# === Telegram Bot Token ===
-TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"
+# === Configuration ===
+TOKEN = "8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8"  # Replace with your bot token
+CHAT_ID = "6234179043"           # Replace with your Telegram chat ID
+PAIR_LIST = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "EURJPY", "GBPJPY", "USDCHF", "NZDUSD"]  # Add more pairs if needed
+TIMEZONE = pytz.timezone("Asia/Kolkata")
 
-# === Logging ===
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+# === Logging Setup ===
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# === Global ===
-CHAT_ID = None
-
-# === Function to fetch live data ===
-def fetch_data():
+# === Support/Resistance Detection Logic (Dummy Example) ===
+def fetch_candle_data(symbol):
     try:
-        response = requests.get("https://api.wiseinvest.ai/market/quotes")  # Replace with valid endpoint
+        # Example API endpoint – replace with real one or your data fetch logic
+        url = f"https://api.example.com/1m-candles?symbol={symbol}"
+        response = requests.get(url)
         data = response.json()
-        return data
+        return data  # Expected: list of dicts with 'open', 'high', 'low', 'close'
     except Exception as e:
-        logger.error(f"Error fetching data: {e}")
-        return {}
+        logging.error(f"Error fetching data for {symbol}: {e}")
+        return []
 
-# === Function to find strong SNR levels ===
-def get_strong_snr_signals():
+def calculate_strong_snr(candles):
+    if len(candles) < 10:
+        return None, None
+
+    recent_highs = [c["high"] for c in candles[-10:]]
+    recent_lows = [c["low"] for c in candles[-10:]]
+
+    resistance = max(recent_highs)
+    support = min(recent_lows)
+
+    return resistance, support
+
+def generate_crt_signal():
     signals = []
-    data = fetch_data()
-    if not data:
-        return signals
+    for symbol in PAIR_LIST:
+        candles = fetch_candle_data(symbol)
+        if not candles:
+            continue
 
-    for pair in data.get("data", []):
-        symbol = pair.get("symbol", "")
-        price = pair.get("price", 0)
-        support = pair.get("support", 0)
-        resistance = pair.get("resistance", 0)
+        last_close = candles[-1]["close"]
+        resistance, support = calculate_strong_snr(candles)
 
-        # Basic SNR check (replace with more advanced logic if needed)
-        if abs(price - support) < 0.01:
-            signals.append(f"🔵 BUY Signal on {symbol} near strong Support: {support}")
-        elif abs(price - resistance) < 0.01:
-            signals.append(f🔴 SELL Signal on {symbol} near strong Resistance: {resistance}")
+        if not resistance or not support:
+            continue
+
+        if last_close >= resistance * 0.997:
+            signals.append(f"🔴 SELL Signal on {symbol} near strong Resistance: {resistance}")
+        elif last_close <= support * 1.003:
+            signals.append(f"🟢 BUY Signal on {symbol} near strong Support: {support}")
 
     return signals
 
-# === Job to send signals ===
-def send_signals():
-    global CHAT_ID
-    if not CHAT_ID:
-        return
-
-    signals = get_strong_snr_signals()
+def send_crt_signal(context: CallbackContext):
+    signals = generate_crt_signal()
     if signals:
-        message = f"📡 CRT Signals ({datetime.now().strftime('%H:%M:%S')}):\n\n" + "\n".join(signals)
-        updater.bot.send_message(chat_id=CHAT_ID, text=message)
+        now = datetime.datetime.now(TIMEZONE).strftime("%d-%b-%Y %I:%M:%S %p")
+        message = f"📡 *CRT Signal Update* [{now} IST]\n\n" + "\n".join(signals)
+        context.bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
     else:
-        logger.info("No strong SNR signals found at this minute.")
+        logging.info("No signals generated.")
 
-# === /start Command Handler ===
 def start(update: Update, context: CallbackContext):
-    global CHAT_ID
-    CHAT_ID = update.message.chat_id
-    update.message.reply_text("✅ CRT Signal Bot Activated! You will now receive 24/7 CRT signals based on strong SNR levels.")
+    update.message.reply_text("✅ CRT Signal Bot Activated!")
 
-# === Main ===
-updater = Updater(token=TOKEN, use_context=True)
-dispatcher = updater.dispatcher
-dispatcher.add_handler(CommandHandler("start", start))
+# === Main Entrypoint ===
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-# === Schedule Signal Sending Every Minute ===
-schedule.every(60).seconds.do(send_signals)
+    dp.add_handler(CommandHandler("start", start))
 
-def run_scheduler():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    scheduler = BackgroundScheduler(timezone=TIMEZONE)
+    scheduler.add_job(lambda: send_crt_signal(updater.bot), 'interval', minutes=1)
+    scheduler.start()
 
-# === Start Bot ===
-import threading
-threading.Thread(target=run_scheduler, daemon=True).start()
-updater.start_polling()
-updater.idle()
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
