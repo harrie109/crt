@@ -1,7 +1,9 @@
 import pytz
 import logging
 import requests
+from flask import Flask
 from datetime import datetime
+from threading import Thread
 from telegram.ext import Updater, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -10,21 +12,26 @@ BOT_TOKEN = '8472184215:AAG7bZCJ6yprFlGFRtN3kB8IflyuRpHLdv8'
 CHAT_ID = '6234179043'
 IST = pytz.timezone('Asia/Kolkata')
 
-# Quotex live currency pairs only (no OTC)
 LIVE_PAIRS = [
     "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "NZDUSD",
     "USDCHF", "USDCAD", "EURJPY", "GBPJPY", "EURGBP"
 ]
 
-# --- Logging ---
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# --- Flask App to keep Render port open ---
+app = Flask(__name__)
 
-# --- Placeholder CRT + SNR logic ---
+@app.route('/')
+def home():
+    return "CRT Signal Bot Running"
+
+# --- Logging ---
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+# --- Placeholder CRT + SNR Logic ---
 def fetch_crt_signal(pair):
     now = datetime.now(IST)
     seconds = now.second
-    # Wait for full candle close
-    if seconds < 5:
+    if seconds < 3:
         signal = {
             "pair": pair,
             "pattern": "CRT on SNR Zone",
@@ -35,8 +42,9 @@ def fetch_crt_signal(pair):
         return signal
     return None
 
-# --- Telegram Bot Signal Sender ---
+# --- Telegram Signal Sender ---
 def send_signal(context):
+    logging.info("Checking for CRT signals...")
     for pair in LIVE_PAIRS:
         signal = fetch_crt_signal(pair)
         if signal:
@@ -49,12 +57,15 @@ def send_signal(context):
                 f"Time: {signal['time']} IST"
             )
             context.bot.send_message(chat_id=CHAT_ID, text=message)
+            logging.info(f"Signal sent: {message}")
+        else:
+            logging.info(f"No signal for {pair} at this time.")
 
+# --- Telegram Bot Setup ---
 def start(update, context):
-    update.message.reply_text("🚀 CRT Signal Bot Activated!\nYou'll receive 24/7 accurate signals from live Quotex market.")
+    update.message.reply_text("🚀 CRT Signal Bot Activated!\nYou'll receive signals 24/7 from live Quotex market.")
 
-# --- Main Bot Runner ---
-def main():
+def run_bot():
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
@@ -62,9 +73,12 @@ def main():
     scheduler = BackgroundScheduler(timezone=IST)
     scheduler.add_job(send_signal, 'cron', second=0, args=[updater.job_queue])
     scheduler.start()
+    logging.info("Scheduler started.")
 
     updater.start_polling()
     updater.idle()
 
+# --- Run Everything ---
 if __name__ == '__main__':
-    main()
+    Thread(target=run_bot).start()
+    app.run(host='0.0.0.0', port=10000)
